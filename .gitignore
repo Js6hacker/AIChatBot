@@ -1,0 +1,4 @@
+chat-history.json
+chat-history.json.tmp
+.env
+node_modules
