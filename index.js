@@ -17,9 +17,11 @@ const chatHistory = await loadChatHistory();
 let saveQueue = Promise.resolve();
 const chatQueues = new Map();
 
-const bot = process.env.BOT_TOKEN ? new Bot(process.env.BOT_TOKEN) : null;
+const botToken = process.env.BOT_TOKEN?.trim();
+const groqApiKey = process.env.GROQ_API_KEY?.trim();
+const bot = botToken ? new Bot(botToken) : null;
 const groq = new OpenAI({
-    apiKey: process.env.GROQ_API_KEY,
+    apiKey: groqApiKey,
     baseURL: 'https://api.groq.com/openai/v1',
 });
 

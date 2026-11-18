@@ -23,7 +23,7 @@ export default async function handler(req, res) {
     if (req.method === 'GET') {
         res.status(200).json({
             status: 'ok',
-            botConfigured: Boolean(process.env.BOT_TOKEN),
+            botConfigured: Boolean(process.env.BOT_TOKEN?.trim()),
         });
         return;
     }
@@ -39,7 +39,7 @@ export default async function handler(req, res) {
         return;
     }
 
-    const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
+    const secret = process.env.TELEGRAM_WEBHOOK_SECRET?.trim();
     if (secret) {
         const receivedSecret = req.headers['x-telegram-bot-api-secret-token'];
         if (receivedSecret !== secret) {
