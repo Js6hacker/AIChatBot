@@ -44,6 +44,34 @@ A Telegram chatbot built with Node.js, the Telegram Bot API, and Groq. It keeps 
 
    Keep the process running while you use the bot. In Telegram, open your bot and send `/start`.
 
+## Deploy to Vercel
+
+1. Import the GitHub repository in Vercel.
+2. Add these project environment variables:
+
+   ```env
+   BOT_TOKEN=your_telegram_bot_token
+   GROQ_API_KEY=your_groq_api_key
+   TELEGRAM_WEBHOOK_SECRET=a_random_private_value
+   ```
+
+3. Deploy the project, then set the Telegram webhook to:
+
+   ```text
+   https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook
+   ```
+
+   Send a JSON body through an API client such as:
+
+   ```json
+   {
+     "url": "https://<your-vercel-domain>/api/webhook",
+     "secret_token": "<TELEGRAM_WEBHOOK_SECRET>"
+   }
+   ```
+
+Vercel runs the bot through `api/webhook.js` and does not start polling. Environment variables must be configured in the Vercel project. Serverless instances have ephemeral memory, so conversation history is reset when instances change; persistent memory requires a database or key-value service.
+
 ## Bot commands
 
 - `/start` — Show the welcome message.

@@ -17,7 +17,7 @@ const chatHistory = await loadChatHistory();
 let saveQueue = Promise.resolve();
 const chatQueues = new Map();
 
-const bot = new Bot(process.env.BOT_TOKEN);
+const bot = process.env.BOT_TOKEN ? new Bot(process.env.BOT_TOKEN) : null;
 const groq = new OpenAI({
     apiKey: process.env.GROQ_API_KEY,
     baseURL: 'https://api.groq.com/openai/v1',
@@ -47,6 +47,9 @@ async function loadChatHistory() {
 }
 
 function saveChatHistory() {
+    if (process.env.VERCEL) {
+        return Promise.resolve();
+    }
     saveQueue = saveQueue.catch(() => {}).then(async () => {
         const temporaryFile = `${historyFile}.tmp`;
         await writeFile(temporaryFile, JSON.stringify(chatHistory, null, 2), 'utf8');
@@ -92,119 +95,125 @@ function startTypingIndicator(ctx) {
     return setInterval(sendTyping, 4000);
 }
 
-bot.command('start', async (ctx) => {
-    await ctx.reply('Hi! 👋 I’m your AI assistant. Send me a message to get started. I’ll remember our conversation; use /reset to start fresh.');
-});
-
-bot.command('reset', async (ctx) => {
-    const chatId = ctx.chatId;
-    if (chatId === undefined) {
-        return;
-    }
-
-    await serializeChat(String(chatId), async () => {
-        delete chatHistory[chatId];
-        await saveChatHistory();
-        await ctx.reply('Conversation memory cleared.');
+if (bot) {
+    bot.command('start', async (ctx) => {
+        await ctx.reply('Hi! 👋 I’m your AI assistant. Send me a message to get started. I’ll remember our conversation; use /reset to start fresh.');
     });
-});
 
-bot.on('message', async (ctx) => {
-    const message = ctx.message?.text;
-    const chatId = ctx.chatId;
-    if (!message || chatId === undefined || message.startsWith('/')) {
-        return;
-    }
+    bot.command('reset', async (ctx) => {
+        const chatId = ctx.chatId;
+        if (chatId === undefined) {
+            return;
+        }
 
-    await serializeChat(String(chatId), async () => {
-        let progressMessage;
-        let typingInterval;
-
-        try {
-            progressMessage = await ctx.reply('Got it! I’m thinking through your message…');
-            typingInterval = startTypingIndicator(ctx);
-
-            const previousMessages = chatHistory[chatId] ?? [];
-            const {
-                messages: requestMessages,
-                currentMessageTruncated,
-                historyTruncated,
-            } = buildRequestMessages(
-                previousMessages,
-                message,
-                systemPrompt,
-                maxPromptContentBytes,
-            );
-            if (currentMessageTruncated || historyTruncated) {
-                await ctx.api.editMessageText({
-                    chat_id: chatId,
-                    message_id: progressMessage.message_id,
-                    text: currentMessageTruncated
-                        ? '💭 Your message is very long, so I’m shortening it to fit. I’m working on it…'
-                        : '💭 I’m focusing on your latest messages to keep the request within limits…',
-                });
-            }
-            if (currentMessageTruncated) {
-                console.warn(`Truncated an oversized incoming message for chat ${chatId}.`);
-            }
-            const stream = await groq.chat.completions.create({
-                model: 'openai/gpt-oss-120b',
-                messages: requestMessages,
-                temperature: 1,
-                max_completion_tokens: 2048,
-                top_p: 1,
-                reasoning_effort: 'medium',
-                stream: true,
-                stop: null,
-            });
-            let answer = '';
-            for await (const chunk of stream) {
-                answer += chunk.choices[0]?.delta?.content || '';
-            }
-
-            if (!answer) {
-                await ctx.api.editMessageText({
-                    chat_id: chatId,
-                    message_id: progressMessage.message_id,
-                    text: 'I couldn’t come up with a response this time. Please try again.',
-                });
-                return;
-            }
-
-            chatHistory[chatId] = [
-                ...previousMessages,
-                { role: 'user', content: message },
-                { role: 'assistant', content: answer },
-            ].slice(-maxHistoryMessages);
+        await serializeChat(String(chatId), async () => {
+            delete chatHistory[chatId];
             await saveChatHistory();
-            await updateProgressWithAnswer(ctx, progressMessage, answer);
-        } catch (error) {
-            console.error('Error processing chatbot message:', error);
-            if (progressMessage) {
-                try {
+            await ctx.reply('Conversation memory cleared.');
+        });
+    });
+
+    bot.on('message', async (ctx) => {
+        const message = ctx.message?.text;
+        const chatId = ctx.chatId;
+        if (!message || chatId === undefined || message.startsWith('/')) {
+            return;
+        }
+
+        await serializeChat(String(chatId), async () => {
+            let progressMessage;
+            let typingInterval;
+
+            try {
+                progressMessage = await ctx.reply('Got it! I’m thinking through your message…');
+                typingInterval = startTypingIndicator(ctx);
+
+                const previousMessages = chatHistory[chatId] ?? [];
+                const {
+                    messages: requestMessages,
+                    currentMessageTruncated,
+                    historyTruncated,
+                } = buildRequestMessages(
+                    previousMessages,
+                    message,
+                    systemPrompt,
+                    maxPromptContentBytes,
+                );
+                if (currentMessageTruncated || historyTruncated) {
                     await ctx.api.editMessageText({
                         chat_id: chatId,
                         message_id: progressMessage.message_id,
-                        text: 'Sorry, I couldn’t finish that reply. Please try again in a moment.',
+                        text: currentMessageTruncated
+                            ? '💭 Your message is very long, so I’m shortening it to fit. I’m working on it…'
+                            : '💭 I’m focusing on your latest messages to keep the request within limits…',
                     });
-                } catch (editError) {
-                    console.error('Could not update the progress message:', editError);
-                    await ctx.reply('Sorry, I couldn’t finish that reply. Please try again in a moment.');
                 }
-            } else {
-                await ctx.reply('Sorry, I couldn’t start that reply. Please try again in a moment.');
+                if (currentMessageTruncated) {
+                    console.warn(`Truncated an oversized incoming message for chat ${chatId}.`);
+                }
+                const stream = await groq.chat.completions.create({
+                    model: 'openai/gpt-oss-120b',
+                    messages: requestMessages,
+                    temperature: 1,
+                    max_completion_tokens: 2048,
+                    top_p: 1,
+                    reasoning_effort: 'medium',
+                    stream: true,
+                    stop: null,
+                });
+                let answer = '';
+                for await (const chunk of stream) {
+                    answer += chunk.choices[0]?.delta?.content || '';
+                }
+
+                if (!answer) {
+                    await ctx.api.editMessageText({
+                        chat_id: chatId,
+                        message_id: progressMessage.message_id,
+                        text: 'I couldn’t come up with a response this time. Please try again.',
+                    });
+                    return;
+                }
+
+                chatHistory[chatId] = [
+                    ...previousMessages,
+                    { role: 'user', content: message },
+                    { role: 'assistant', content: answer },
+                ].slice(-maxHistoryMessages);
+                await saveChatHistory();
+                await updateProgressWithAnswer(ctx, progressMessage, answer);
+            } catch (error) {
+                console.error('Error processing chatbot message:', error);
+                if (progressMessage) {
+                    try {
+                        await ctx.api.editMessageText({
+                            chat_id: chatId,
+                            message_id: progressMessage.message_id,
+                            text: 'Sorry, I couldn’t finish that reply. Please try again in a moment.',
+                        });
+                    } catch (editError) {
+                        console.error('Could not update the progress message:', editError);
+                        await ctx.reply('Sorry, I couldn’t finish that reply. Please try again in a moment.');
+                    }
+                } else {
+                    await ctx.reply('Sorry, I couldn’t start that reply. Please try again in a moment.');
+                }
+            } finally {
+                if (typingInterval) {
+                    clearInterval(typingInterval);
+                }
             }
-        } finally {
-            if (typingInterval) {
-                clearInterval(typingInterval);
-            }
-        }
+        });
     });
-});
 
-bot.catch((error) => {
-    console.error('Error handling Telegram update:', error);
-});
+    bot.catch((error) => {
+        console.error('Error handling Telegram update:', error);
+    });
+}
 
-console.log('Bot is running...');
-await run(bot);
+export { bot };
+
+if (!process.env.VERCEL && bot) {
+    console.log('Bot is running...');
+    await run(bot);
+}
