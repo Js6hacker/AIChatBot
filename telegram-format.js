@@ -8,6 +8,7 @@ function escapeHtml(text) {
 }
 
 function formatInlineMarkdown(text) {
+    const links = [];
     return text
         .split(/(`[^`\n]*`)/g)
         .map((part) => {
@@ -15,9 +16,20 @@ function formatInlineMarkdown(text) {
                 return `<code>${escapeHtml(part.slice(1, -1))}</code>`;
             }
 
-            return escapeHtml(part)
-                .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
-                .replace(/\*(.+?)\*/g, '<b>$1</b>');
+            const protectedLinks = escapeHtml(part).replace(
+                /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
+                (_, label, url) => {
+                    const placeholder = `\uE000${links.length}\uE001`;
+                    links.push(`<a href="${url}">${label}</a>`);
+                    return placeholder;
+                },
+            );
+            return protectedLinks
+                .replace(/(\*\*|__)(.+?)\1/g, '<b>$2</b>')
+                .replace(/~~(.+?)~~/g, '<s>$1</s>')
+                .replace(/\*(.+?)\*/g, '<b>$1</b>')
+                .replace(/_(.+?)_/g, '<i>$1</i>')
+                .replace(/\uE000(\d+)\uE001/g, (_, index) => links[Number(index)]);
         })
         .join('');
 }
@@ -107,8 +119,16 @@ export function formatTelegramMarkdown(markdown) {
         }
 
         const heading = line.match(/^\s{0,3}#{1,6}\s+(.+)$/);
+        const bullet = line.match(/^(\s*)[-+*]\s+(.+)$/);
+        const quote = line.match(/^(\s{0,3})>\s?(.*)$/);
         formattedLines.push(
-            heading ? `<b>${formatInlineMarkdown(heading[1])}</b>` : formatInlineMarkdown(line),
+            heading
+                ? `<b>${formatInlineMarkdown(heading[1])}</b>`
+                : bullet
+                    ? `${bullet[1]}• ${formatInlineMarkdown(bullet[2])}`
+                    : quote
+                        ? `${quote[1]}❯ ${formatInlineMarkdown(quote[2])}`
+                        : formatInlineMarkdown(line),
         );
     }
 

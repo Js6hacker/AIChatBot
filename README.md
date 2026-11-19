@@ -8,7 +8,7 @@ A Telegram chatbot built with Node.js, the Telegram Bot API, and Groq. It keeps 
 - Remembers up to 10 recent exchanges per chat and saves them locally between restarts.
 - Provides `/reset` to clear the current chat's saved conversation.
 - Shows a progress message and Telegram's typing indicator while responding.
-- Formats headings, bold text, inline code, fenced code blocks, and Markdown tables. Tables are rendered as readable lists because Telegram messages do not support table layouts.
+- Formats headings, bold and italic text, links, lists, quotes, inline code, fenced code blocks, and Markdown tables. Tables are rendered as readable lists because Telegram messages do not support table layouts.
 - Bounds prompt content to help avoid oversized model requests.
 
 ## Requirements
